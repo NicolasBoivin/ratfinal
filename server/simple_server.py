@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Serveur RAT - Version 1.1 - Première tentative de socket
-Commit: "Initial socket implementation - basic server"
+Serveur RAT - Version 1.2 
+Commit: "Add basic error handling and message loop"
 """
 import socket
 
@@ -11,21 +11,35 @@ class BasicServer:
         self.port = port
         
     def start(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # BUG: pas de gestion d'erreur
-        sock.bind((self.host, self.port))
-        sock.listen(1)  # Seulement 1 client
-        
-        print(f"Serveur démarré sur {self.host}:{self.port}")
-        
-        while True:
-            client_sock, addr = sock.accept()
-            print(f"Client connecté: {addr}")
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind((self.host, self.port))
+            sock.listen(5)
             
-            # BUG: boucle infinie basique
-            data = client_sock.recv(1024)
-            print(f"Reçu: {data}")
-            client_sock.close()
+            print(f"[*] Serveur démarré sur {self.host}:{self.port}")
+            
+            while True:
+                client_sock, addr = sock.accept()
+                print(f"[+] Client connecté: {addr}")
+                
+                # Amélioration: boucle de messages
+                while True:
+                    try:
+                        data = client_sock.recv(1024)
+                        if not data:
+                            break
+                        print(f"[*] Reçu: {data.decode('utf-8')}")
+                        # Echo simple
+                        client_sock.send(b"Message recu")
+                    except Exception as e:
+                        print(f"[-] Erreur: {e}")
+                        break
+                        
+                client_sock.close()
+                print(f"[-] Client {addr} déconnecté")
+                
+        except Exception as e:
+            print(f"[-] Erreur serveur: {e}")
 
 def main():
     server = BasicServer()
