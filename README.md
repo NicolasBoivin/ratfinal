@@ -2,7 +2,7 @@
 
 ## 📝 Description
 
-Projet fait par Nicolas BOIVIN & Emmanuel COUTHY 4SI2
+Projet fait par Nicolas BOIVIN & Emmanuel COUTHY 4SI2, nous avons fait fonctionné le projet avec NGROK pour une raison de simplicité car nous ne voulions pas ouvrir directement de port chez nous.
 
 ## ✨ Fonctionnalités
 
