@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-"""
-Serveur RAT basé sur l'architecture qui fonctionne chez ton ami - KEYLOGGER AVEC SAUVEGARDE AUTO
-"""
 import socket
 import threading
 import time
